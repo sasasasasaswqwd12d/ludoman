@@ -3,7 +3,6 @@ from discord.ext import commands, tasks
 from discord import app_commands
 import os
 import asyncio
-from datetime import datetime
 import random
 from dotenv import load_dotenv
 
@@ -20,8 +19,7 @@ class LudomanBot(commands.Bot):
     def __init__(self):
         super().__init__(
             command_prefix="!",
-            intents=intents,
-            application_id=os.getenv('APPLICATION_ID', None)
+            intents=intents
         )
         self.statuses = [
             {"type": discord.ActivityType.playing, "name": "в кости"},
@@ -36,13 +34,18 @@ class LudomanBot(commands.Bot):
 
     async def setup_hook(self):
         print(f'{self.user} запускается...')
-        await self.load_extension("cogs.application")
-        await self.load_extension("cogs.events")
+        try:
+            # Загружаем коги
+            await self.load_extension("cogs.application")
+            await self.load_extension("cogs.events")
+            print("Коги успешно загружены!")
+        except Exception as e:
+            print(f"Ошибка при загрузке когов: {e}")
 
     async def on_ready(self):
-        print(f'Бот {self.user} успешно запущен!')
-        print(f'Создатель: Mason')
-        print(f'Семья: Ludoman clnx')
+        print(f'✅ Бот {self.user} успешно запущен!')
+        print(f'👑 Создатель: Mason')
+        print(f'🎲 Семья: Ludoman clnx')
 
         # Устанавливаем начальный статус
         await self.set_initial_status()
@@ -50,7 +53,12 @@ class LudomanBot(commands.Bot):
         # Запускаем задачу смены статуса
         self.change_status.start()
 
-        await self.tree.sync()
+        try:
+            await self.tree.sync()
+            print("✅ Команды синхронизированы!")
+        except Exception as e:
+            print(f"Ошибка при синхронизации команд: {e}")
+
         self.is_ready = True
 
     async def set_initial_status(self):
@@ -62,6 +70,7 @@ class LudomanBot(commands.Bot):
                 name=status["name"]
             )
             await self.change_presence(activity=activity)
+            print(f"📊 Установлен начальный статус: {status['name']}")
 
     @tasks.loop(seconds=30)
     async def change_status(self):
@@ -75,6 +84,7 @@ class LudomanBot(commands.Bot):
                 name=status["name"]
             )
             await self.change_presence(activity=activity)
+            print(f"📊 Смена статуса: {status['name']}")
             self.current_status = (self.current_status + 1) % len(self.statuses)
         except Exception as e:
             print(f"Ошибка при смене статуса: {e}")
@@ -88,4 +98,8 @@ bot = LudomanBot()
 
 # Запуск бота
 if __name__ == "__main__":
-    bot.run(TOKEN)
+    if TOKEN:
+        print("🚀 Запуск бота Ludoman clnx...")
+        bot.run(TOKEN)
+    else:
+        print("❌ Ошибка: Токен не найден! Проверьте файл .env")

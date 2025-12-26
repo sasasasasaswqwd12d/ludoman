@@ -1,8 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from discord.ui import Button, View, Modal, TextInput, Select
-import asyncio
+from discord.ui import Button, View, Modal, TextInput
 from datetime import datetime
 
 # ID ролей для модерации
@@ -94,6 +93,7 @@ class ApplicationModal(Modal, title="📝 Заявка в семью Ludoman cln
             if target_channel:
                 message = await target_channel.send(embed=embed, view=view)
                 view.message_id = message.id
+                print(f"✅ Заявка от {interaction.user} отправлена в {target_channel.name}")
 
         await interaction.followup.send("✅ Ваша заявка успешно отправлена на рассмотрение!", ephemeral=True)
 
@@ -106,9 +106,12 @@ class ModerationView(View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         # Проверяем, есть ли у пользователя нужные роли
         user_roles = [role.id for role in interaction.user.roles]
-        return any(role in MOD_ROLES for role in user_roles)
+        has_role = any(role in MOD_ROLES for role in user_roles)
+        if not has_role:
+            await interaction.response.send_message("❌ У вас недостаточно прав!", ephemeral=True)
+        return has_role
 
-    @discord.ui.button(label="📞 Вызвать на обзвон", style=discord.ButtonStyle.blurple, custom_id="call_interview", emoji="📞")
+    @discord.ui.button(label="📞 Вызвать на обзвон", style=discord.ButtonStyle.blurple, custom_id="call_interview")
     async def call_interview(self, interaction: discord.Interaction, button: Button):
         await interaction.response.defer()
 
@@ -136,7 +139,6 @@ class ModerationView(View):
                 await user.send(embed=notify_embed)
             except Exception as e:
                 print(f"Не удалось отправить сообщение пользователю: {e}")
-                await interaction.followup.send(f"⚠️ Не удалось отправить уведомление пользователю {user.mention}", ephemeral=True)
 
         await interaction.message.edit(embed=embed)
 
@@ -147,7 +149,7 @@ class ModerationView(View):
         )
         await interaction.followup.send(embed=success_embed, ephemeral=True)
 
-    @discord.ui.button(label="✅ Одобрено", style=discord.ButtonStyle.success, custom_id="approve", emoji="✅")
+    @discord.ui.button(label="✅ Одобрено", style=discord.ButtonStyle.success, custom_id="approve")
     async def approve(self, interaction: discord.Interaction, button: Button):
         await interaction.response.defer()
 
@@ -176,7 +178,6 @@ class ModerationView(View):
                 await user.send(embed=notify_embed)
             except Exception as e:
                 print(f"Не удалось отправить сообщение пользователю: {e}")
-                await interaction.followup.send(f"⚠️ Не удалось отправить уведомление пользователю {user.mention}", ephemeral=True)
 
         # Отключаем все кнопки
         for child in self.children:
@@ -191,48 +192,11 @@ class ModerationView(View):
         )
         await interaction.followup.send(embed=success_embed, ephemeral=True)
 
-    @discord.ui.button(label="❌ Отказано", style=discord.ButtonStyle.danger, custom_id="deny", emoji="❌")
+    @discord.ui.button(label="❌ Отказано", style=discord.ButtonStyle.danger, custom_id="deny")
     async def deny(self, interaction: discord.Interaction, button: Button):
         # Модальное окно для указания причины отказа
         modal = DenyModal()
         await interaction.response.send_modal(modal)
-
-        # Ждем завершения модального окна
-        if await modal.wait():
-            return
-
-        embed = interaction.message.embeds[0]
-        embed.color = 0xe74c3c
-        embed.add_field(name="📝 Причина отказа", value=f"```{modal.reason.value}```", inline=False)
-        embed.set_footer(text="Ludoman clnx • Заявка отклонена ❌")
-
-        # Отправляем уведомление пользователю
-        user = self.application_data.get("user")
-        if user:
-            try:
-                notify_embed = discord.Embed(
-                    title="😔 ЗАЯВКА ОТКЛОНЕНА",
-                    description=f"**Дорогой {self.application_data['real_name']},**\n\n"
-                              f"К сожалению, твоя заявка в семью Ludoman clnx была отклонена.\n\n"
-                              f"**📌 Причина отказа:**\n"
-                              f"```{modal.reason.value}```\n\n"
-                              f"**🔄 Что дальше?**\n"
-                              f"• Ты можешь подать новую заявку через 30 дней\n"
-                              f"• Исправь указанные недостатки\n"
-                              f"• Удачи в будущем!",
-                    color=0xe74c3c
-                )
-                notify_embed.set_footer(text="Ludoman Family • Не расстраивайся, всё получится! 💪")
-                await user.send(embed=notify_embed)
-            except Exception as e:
-                print(f"Не удалось отправить сообщение пользователю: {e}")
-                await interaction.followup.send(f"⚠️ Не удалось отправить уведомление пользователю {user.mention}", ephemeral=True)
-
-        # Отключаем все кнопки
-        for child in self.children:
-            child.disabled = True
-
-        await interaction.message.edit(embed=embed, view=self)
 
 class DenyModal(Modal, title="📝 Укажите причину отказа"):
     reason = TextInput(
@@ -244,16 +208,63 @@ class DenyModal(Modal, title="📝 Укажите причину отказа"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
 
-    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
-        await interaction.response.send_message('Ошибка! Что-то пошло не так.', ephemeral=True)
+        # Находим исходное сообщение с заявкой
+        for view in interaction.client.persistent_views:
+            if hasattr(view, 'message_id'):
+                try:
+                    channel = interaction.channel
+                    message = await channel.fetch_message(view.message_id)
+
+                    embed = message.embeds[0]
+                    embed.color = 0xe74c3c
+                    embed.add_field(name="📝 Причина отказа", value=f"```{self.reason.value}```", inline=False)
+                    embed.set_footer(text="Ludoman clnx • Заявка отклонена ❌")
+
+                    # Отправляем уведомление пользователю
+                    if hasattr(view, 'application_data'):
+                        user = view.application_data.get("user")
+                        if user:
+                            try:
+                                notify_embed = discord.Embed(
+                                    title="😔 ЗАЯВКА ОТКЛОНЕНА",
+                                    description=f"**Дорогой {view.application_data['real_name']},**\n\n"
+                                              f"К сожалению, твоя заявка в семью Ludoman clnx была отклонена.\n\n"
+                                              f"**📌 Причина отказа:**\n"
+                                              f"```{self.reason.value}```\n\n"
+                                              f"**🔄 Что дальше?**\n"
+                                              f"• Ты можешь подать новую заявку через 30 дней\n"
+                                              f"• Исправь указанные недостатки\n"
+                                              f"• Удачи в будущем!",
+                                    color=0xe74c3c
+                                )
+                                notify_embed.set_footer(text="Ludoman Family • Не расстраивайся, всё получится! 💪")
+                                await user.send(embed=notify_embed)
+                            except Exception as e:
+                                print(f"Не удалось отправить сообщение пользователю: {e}")
+
+                    # Отключаем все кнопки
+                    for child in view.children:
+                        child.disabled = True
+
+                    await message.edit(embed=embed, view=view)
+
+                except Exception as e:
+                    print(f"Ошибка при обновлении сообщения: {e}")
+
+        success_embed = discord.Embed(
+            title="✅ Заявка отклонена",
+            description=f"Причина отказа указана и отправлена пользователю.",
+            color=0xe74c3c
+        )
+        await interaction.followup.send(embed=success_embed, ephemeral=True)
 
 class ApplicationButtonView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="📝 ПОДАТЬ ЗАЯВКУ", style=discord.ButtonStyle.primary, custom_id="apply_button", emoji="📝")
+    @discord.ui.button(label="📝 ПОДАТЬ ЗАЯВКУ", style=discord.ButtonStyle.primary, custom_id="apply_button")
     async def apply_button(self, interaction: discord.Interaction, button: Button):
         modal = ApplicationModal()
         await interaction.response.send_modal(modal)
@@ -327,22 +338,13 @@ class ApplicationCog(commands.Cog):
         )
 
         embed.add_field(
-            name="📊 **СТАТИСТИКА СЕМЬИ:**",
-            value="""• **Активных игроков:** 50+\n"""
-                 """• **Онлайн ежедневно:** 20-30\n"""
-                 """• **Средний заработок:** 100к+ в день\n"""
-                 """• **Успешных заявок:** 85%\n"""
-                 """• **Время рассмотрения:** 1-24 часа""",
-            inline=False
-        )
-
-        embed.add_field(
             name="📝 **КАК ПОДАТЬ ЗАЯВКУ:**",
-            value="**Нажми кнопку ниже** и заполни анкету. Будь честен и подробен в ответах!",
+            value="**Нажми кнопку ниже** и заполни анкету. Будь честен и подробен в ответах!\n\n"
+                  f"*Все заявки будут отправляться в канал {target_channel.mention}*",
             inline=False
         )
 
-        embed.set_footer(text="Ludoman Family • Создатель: Mason • Заявки отправляются в отдельный канал")
+        embed.set_footer(text="Ludoman Family • Создатель: Mason")
 
         # Создаем кнопку для подачи заявки
         view = ApplicationButtonView()
@@ -351,7 +353,11 @@ class ApplicationCog(commands.Cog):
         await interaction.response.send_message("✅ Система заявок настроена!", ephemeral=True)
         await interaction.channel.send(embed=embed, view=view)
 
-        # Логирование
+        # Добавляем view в persistent views
+        if not hasattr(self.bot, 'persistent_views'):
+            self.bot.persistent_views = []
+        self.bot.persistent_views.append(view)
+
         print(f"[НАБОР] Набор открыт в канале {interaction.channel.name}")
         print(f"[НАБОР] Заявки будут отправляться в {target_channel.name}")
 

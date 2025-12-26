@@ -24,14 +24,6 @@ class EventsCog(commands.Cog):
                 f"🔥 **НОВАЯ ЭНЕРГИЯ В СЕМЬЕ!** 🔥\n\n"
                 f"Все приветствуем {member.mention}!\n"
                 f"У нас пополнение! Готовьте напитки и удачу!",
-
-                f"🎲 **КОСТИ ЗВОНЯТ ТВОИМ ИМЕНЕМ!** 🎲\n\n"
-                f"{member.mention} входит в игру!\n"
-                f"Пусть удача всегда будет на твоей стороне!",
-
-                f"💫 **МАГИЯ НАЧИНАЕТСЯ!** 💫\n\n"
-                f"Приветствуем {member.mention} в нашем королевстве!\n"
-                f"Здесь рождаются легенды костей!",
             ]
 
             welcome_channel = self.bot.get_channel(WELCOME_CHANNEL_ID)
@@ -39,7 +31,7 @@ class EventsCog(commands.Cog):
                 try:
                     welcome_embed = discord.Embed(
                         description=random.choice(greetings),
-                        color=random.choice([0x9b59b6, 0x3498db, 0xe74c3c, 0x2ecc71, 0xf1c40f])
+                        color=random.choice([0x9b59b6, 0x3498db, 0x2ecc71, 0xf1c40f])
                     )
 
                     if member.avatar:
@@ -48,6 +40,7 @@ class EventsCog(commands.Cog):
                     welcome_embed.set_footer(text="Ludoman clnx • Добро пожаловать в семью!")
 
                     await welcome_channel.send(embed=welcome_embed)
+                    print(f"👋 Отправлено приветствие для {member} в канале {welcome_channel.name}")
                 except Exception as e:
                     print(f"Ошибка при отправке приветствия: {e}")
 
