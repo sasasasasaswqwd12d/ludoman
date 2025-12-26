@@ -32,6 +32,19 @@ class LudomanBot(commands.Bot):
         self.current_status = 0
         self.is_ready = False
 
+class LudomanBot(commands.Bot):
+    def __init__(self):
+        super().__init__(
+            command_prefix="!",
+            intents=intents
+        )
+        self.statuses = [
+            # ... статусы ...
+        ]
+        self.current_status = 0
+        self.is_ready = False
+        self.temp_applications = {}  # Добавить эту строку для временного хранения заявок
+
     async def setup_hook(self):
         print(f'{self.user} запускается...')
         try:

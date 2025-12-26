@@ -8,50 +8,66 @@ from datetime import datetime
 MOD_ROLES = [1454210800813346968, 1454210803472400404]
 
 class ApplicationModal(Modal, title="📝 Заявка в семью Ludoman clnx"):
-    nickname = TextInput(
-        label="Ваш игровой ник",
-        placeholder="Пример: Nick_Name",
-        max_length=32,
-        required=True
-    )
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Первые 5 обязательных полей
+        self.nickname = TextInput(
+            label="Ваш игровой ник",
+            placeholder="Пример: Nick_Name",
+            max_length=32,
+            required=True
+        )
+        self.add_item(self.nickname)
 
-    static_id = TextInput(
-        label="Ваш Static ID",
-        placeholder="Пример: 66666",
-        max_length=10,
-        required=True
-    )
+        self.static_id = TextInput(
+            label="Ваш Static ID",
+            placeholder="Пример: 66666",
+            max_length=10,
+            required=True
+        )
+        self.add_item(self.static_id)
 
-    age = TextInput(
-        label="Ваш возраст (IRL)",
-        placeholder="Пример: 18",
-        max_length=2,
-        required=True
-    )
+        self.age = TextInput(
+            label="Ваш возраст (IRL)",
+            placeholder="Пример: 18",
+            max_length=2,
+            required=True
+        )
+        self.add_item(self.age)
 
-    real_name = TextInput(
-        label="Как вас зовут в реальной жизни?",
-        placeholder="Пример: Александр",
-        max_length=32,
-        required=True
-    )
+        self.real_name = TextInput(
+            label="Как вас зовут в реальной жизни?",
+            placeholder="Пример: Александр",
+            max_length=32,
+            required=True
+        )
+        self.add_item(self.real_name)
 
-    playtime = TextInput(
-        label="Сколько времени уделяете игре?",
-        placeholder="Пример: 4-5 часов в день",
-        max_length=50,
-        required=True
-    )
-
-    discovery = TextInput(
-        label="Откуда узнали о семье?",
-        placeholder="Пример: TikTok / Маркет / Друзья",
-        max_length=100,
-        required=True
-    )
+        # Комбинируем два вопроса в одно поле
+        self.game_info = TextInput(
+            label="Игра и откуда узнали о нас",
+            placeholder="Пример: Играю 4-5 часов в день, узнал от друга",
+            style=discord.TextStyle.paragraph,
+            max_length=200,
+            required=True
+        )
+        self.add_item(self.game_info)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
+
+        # Парсим информацию об игре
+        playtime = "Не указано"
+        discovery = "Не указано"
+        game_info = self.game_info.value
+
+        # Простая логика парсинга (можно улучшить)
+        if "часов" in game_info or "часа" in game_info:
+            playtime = game_info
+            discovery = "Не указано"
+        else:
+            playtime = "Не указано"
+            discovery = game_info
 
         embed = discord.Embed(
             title="🎲 НОВАЯ ЗАЯВКА В LUDOMAN CLNX",
@@ -63,8 +79,8 @@ class ApplicationModal(Modal, title="📝 Заявка в семью Ludoman cln
         embed.add_field(name="🆔 Static ID", value=f"```{self.static_id.value}```", inline=True)
         embed.add_field(name="🎂 Возраст", value=f"```{self.age.value}```", inline=True)
         embed.add_field(name="📛 Реальное имя", value=f"```{self.real_name.value}```", inline=True)
-        embed.add_field(name="⏰ Время в игре", value=f"```{self.playtime.value}```", inline=True)
-        embed.add_field(name="📢 Откуда узнал", value=f"```{self.discovery.value}```", inline=True)
+        embed.add_field(name="⏰ Время в игре", value=f"```{playtime}```", inline=True)
+        embed.add_field(name="📢 Откуда узнал", value=f"```{discovery}```", inline=True)
         embed.add_field(name="👤 Подавший", value=f"{interaction.user.mention}\nID: {interaction.user.id}", inline=False)
 
         if interaction.user.avatar:
@@ -80,8 +96,9 @@ class ApplicationModal(Modal, title="📝 Заявка в семью Ludoman cln
             "static_id": self.static_id.value,
             "age": self.age.value,
             "real_name": self.real_name.value,
-            "playtime": self.playtime.value,
-            "discovery": self.discovery.value
+            "playtime": playtime,
+            "discovery": discovery,
+            "full_info": self.game_info.value
         }
 
         # Отправка в канал для заявок (из сохраненного в команде /набор)
@@ -195,70 +212,60 @@ class ModerationView(View):
     @discord.ui.button(label="❌ Отказано", style=discord.ButtonStyle.danger, custom_id="deny")
     async def deny(self, interaction: discord.Interaction, button: Button):
         # Модальное окно для указания причины отказа
-        modal = DenyModal()
+        class DenyReasonModal(Modal, title="📝 Укажите причину отказа"):
+            reason = TextInput(
+                label="Причина отказа",
+                placeholder="Пример: Не подходит по возрасту / Недостаточный опыт игры",
+                style=discord.TextStyle.paragraph,
+                required=True,
+                max_length=500
+            )
+
+            async def on_submit(self, modal_interaction: discord.Interaction):
+                await modal_interaction.response.defer()
+
+                embed = interaction.message.embeds[0]
+                embed.color = 0xe74c3c
+                embed.add_field(name="📝 Причина отказа", value=f"```{self.reason.value}```", inline=False)
+                embed.set_footer(text="Ludoman clnx • Заявка отклонена ❌")
+
+                # Отправляем уведомление пользователю
+                user = self.view.application_data.get("user")
+                if user:
+                    try:
+                        notify_embed = discord.Embed(
+                            title="😔 ЗАЯВКА ОТКЛОНЕНА",
+                            description=f"**Дорогой {self.view.application_data['real_name']},**\n\n"
+                                      f"К сожалению, твоя заявка в семью Ludoman clnx была отклонена.\n\n"
+                                      f"**📌 Причина отказа:**\n"
+                                      f"```{self.reason.value}```\n\n"
+                                      f"**🔄 Что дальше?**\n"
+                                      f"• Ты можешь подать новую заявку через 30 дней\n"
+                                      f"• Исправь указанные недостатки\n"
+                                      f"• Удачи в будущем!",
+                            color=0xe74c3c
+                        )
+                        notify_embed.set_footer(text="Ludoman Family • Не расстраивайся, всё получится! 💪")
+                        await user.send(embed=notify_embed)
+                    except Exception as e:
+                        print(f"Не удалось отправить сообщение пользователю: {e}")
+
+                # Отключаем все кнопки
+                for child in self.view.children:
+                    child.disabled = True
+
+                await interaction.message.edit(embed=embed, view=self.view)
+
+                success_embed = discord.Embed(
+                    title="✅ Заявка отклонена",
+                    description=f"Причина отказа указана и отправлена пользователю.",
+                    color=0xe74c3c
+                )
+                await modal_interaction.followup.send(embed=success_embed, ephemeral=True)
+
+        modal = DenyReasonModal()
+        modal.view = self  # Передаем ссылку на текущий View
         await interaction.response.send_modal(modal)
-
-class DenyModal(Modal, title="📝 Укажите причину отказа"):
-    reason = TextInput(
-        label="Причина отказа",
-        placeholder="Пример: Не подходит по возрасту / Недостаточный опыт игры / Не отвечал на вопросы",
-        style=discord.TextStyle.paragraph,
-        required=True,
-        max_length=500
-    )
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-
-        # Находим исходное сообщение с заявкой
-        for view in interaction.client.persistent_views:
-            if hasattr(view, 'message_id'):
-                try:
-                    channel = interaction.channel
-                    message = await channel.fetch_message(view.message_id)
-
-                    embed = message.embeds[0]
-                    embed.color = 0xe74c3c
-                    embed.add_field(name="📝 Причина отказа", value=f"```{self.reason.value}```", inline=False)
-                    embed.set_footer(text="Ludoman clnx • Заявка отклонена ❌")
-
-                    # Отправляем уведомление пользователю
-                    if hasattr(view, 'application_data'):
-                        user = view.application_data.get("user")
-                        if user:
-                            try:
-                                notify_embed = discord.Embed(
-                                    title="😔 ЗАЯВКА ОТКЛОНЕНА",
-                                    description=f"**Дорогой {view.application_data['real_name']},**\n\n"
-                                              f"К сожалению, твоя заявка в семью Ludoman clnx была отклонена.\n\n"
-                                              f"**📌 Причина отказа:**\n"
-                                              f"```{self.reason.value}```\n\n"
-                                              f"**🔄 Что дальше?**\n"
-                                              f"• Ты можешь подать новую заявку через 30 дней\n"
-                                              f"• Исправь указанные недостатки\n"
-                                              f"• Удачи в будущем!",
-                                    color=0xe74c3c
-                                )
-                                notify_embed.set_footer(text="Ludoman Family • Не расстраивайся, всё получится! 💪")
-                                await user.send(embed=notify_embed)
-                            except Exception as e:
-                                print(f"Не удалось отправить сообщение пользователю: {e}")
-
-                    # Отключаем все кнопки
-                    for child in view.children:
-                        child.disabled = True
-
-                    await message.edit(embed=embed, view=view)
-
-                except Exception as e:
-                    print(f"Ошибка при обновлении сообщения: {e}")
-
-        success_embed = discord.Embed(
-            title="✅ Заявка отклонена",
-            description=f"Причина отказа указана и отправлена пользователю.",
-            color=0xe74c3c
-        )
-        await interaction.followup.send(embed=success_embed, ephemeral=True)
 
 class ApplicationButtonView(View):
     def __init__(self):
@@ -352,11 +359,6 @@ class ApplicationCog(commands.Cog):
         # Отправляем в ТЕКУЩИЙ канал
         await interaction.response.send_message("✅ Система заявок настроена!", ephemeral=True)
         await interaction.channel.send(embed=embed, view=view)
-
-        # Добавляем view в persistent views
-        if not hasattr(self.bot, 'persistent_views'):
-            self.bot.persistent_views = []
-        self.bot.persistent_views.append(view)
 
         print(f"[НАБОР] Набор открыт в канале {interaction.channel.name}")
         print(f"[НАБОР] Заявки будут отправляться в {target_channel.name}")
