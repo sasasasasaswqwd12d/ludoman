@@ -35,8 +35,8 @@ class LudomanBot(commands.Bot):
 
     async def setup_hook(self):
         print(f'{self.user} запускается...')
-        await self.load_extension("cogs.application")
-        await self.load_extension("cogs.events")
+        await self.load_extension("application")
+        await self.load_extension("events")
         self.change_status.start()
 
     async def on_ready(self):
